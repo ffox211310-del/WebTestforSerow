@@ -1,352 +1,1146 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serow Qwen2.5 0.5B (ONNX) デモ</title>
-    <!-- Import Map: Transformers.js を CDN から読み込む -->
+
+    <title>Serow Qwen2.5 0.5B - Browser AI</title>
+
+    <!-- Transformers.js -->
     <script type="importmap">
-        {
-            "imports": {
-                "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/transformers.min.js"
-            }
+    {
+        "imports": {
+            "@huggingface/transformers":
+                "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js"
         }
+    }
     </script>
+
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                Helvetica,
+                Arial,
+                sans-serif;
+
             max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #f9fafb;
+            margin: 0 auto;
+            padding: 30px 20px;
+
+            background: #f8fafc;
             color: #1f2937;
         }
+
         h1 {
             font-size: 1.8rem;
-            font-weight: 600;
+            font-weight: 700;
+
             display: flex;
             align-items: center;
             gap: 10px;
+
+            margin-bottom: 8px;
         }
+
         .badge {
-            font-size: 0.8rem;
-            background: #e5e7eb;
-            padding: 4px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+
+            background: #dbeafe;
+            color: #1d4ed8;
+
+            padding: 5px 10px;
             border-radius: 20px;
-            font-weight: 400;
         }
+
+        .description {
+            color: #64748b;
+            line-height: 1.6;
+        }
+
         .card {
             background: white;
-            border-radius: 16px;
+            border-radius: 18px;
+
             padding: 24px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             margin-top: 20px;
+
+            box-shadow:
+                0 4px 6px -1px rgba(0,0,0,0.08),
+                0 10px 20px -5px rgba(0,0,0,0.05);
         }
-        .status-bar {
-            background: #f3f4f6;
-            border-radius: 8px;
-            height: 8px;
-            width: 100%;
-            overflow: hidden;
-            margin: 16px 0;
-        }
-        .status-bar-fill {
-            height: 100%;
-            width: 0%;
-            background: #3b82f6;
-            transition: width 0.2s ease;
-            border-radius: 8px;
-        }
-        #status-text {
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+
             font-size: 0.9rem;
-            color: #6b7280;
-            margin-top: 4px;
-            min-height: 1.5em;
+            font-weight: 600;
         }
+
+        .status-bar {
+            width: 100%;
+            height: 8px;
+
+            background: #e5e7eb;
+
+            border-radius: 999px;
+
+            overflow: hidden;
+
+            margin: 12px 0 8px;
+        }
+
+        .status-bar-fill {
+            width: 0%;
+            height: 100%;
+
+            background: linear-gradient(
+                90deg,
+                #2563eb,
+                #60a5fa
+            );
+
+            border-radius: 999px;
+
+            transition: width 0.2s ease;
+        }
+
+        #status-text {
+            min-height: 1.5em;
+
+            color: #64748b;
+
+            font-size: 0.85rem;
+
+            margin-bottom: 20px;
+        }
+
         textarea {
             width: 100%;
-            padding: 12px 16px;
+
+            min-height: 100px;
+
+            padding: 14px 16px;
+
             border: 1px solid #d1d5db;
             border-radius: 12px;
-            font-size: 1rem;
-            box-sizing: border-box;
-            resize: vertical;
+
             font-family: inherit;
-        }
-        textarea:focus {
+            font-size: 1rem;
+
+            resize: vertical;
+
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+
+            transition:
+                border-color 0.2s,
+                box-shadow 0.2s;
         }
+
+        textarea:focus {
+            border-color: #3b82f6;
+
+            box-shadow:
+                0 0 0 3px rgba(59,130,246,0.15);
+        }
+
         .button-group {
             display: flex;
-            gap: 12px;
+
+            gap: 10px;
+
             margin-top: 12px;
-            flex-wrap: wrap;
         }
+
         button {
-            background: #3b82f6;
-            color: white;
             border: none;
-            padding: 10px 24px;
+
+            padding: 11px 20px;
+
             border-radius: 12px;
+
+            font-size: 0.95rem;
             font-weight: 600;
-            font-size: 1rem;
+
             cursor: pointer;
-            transition: background 0.2s;
-            flex: 1 1 auto;
+
+            transition:
+                background 0.2s,
+                transform 0.1s;
+
+            flex: 1;
         }
-        button:hover:not(:disabled) {
+
+        button:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        #generate-btn {
             background: #2563eb;
+            color: white;
         }
-        button:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
+
+        #generate-btn:hover:not(:disabled) {
+            background: #1d4ed8;
         }
+
         button.secondary {
             background: #e5e7eb;
-            color: #1f2937;
+            color: #374151;
         }
+
         button.secondary:hover:not(:disabled) {
             background: #d1d5db;
         }
+
+        button:disabled {
+            background: #9ca3af !important;
+            color: white !important;
+
+            cursor: not-allowed;
+        }
+
         #output {
             margin-top: 20px;
-            padding: 16px;
+
+            padding: 18px;
+
             background: #f8fafc;
-            border-radius: 12px;
+
             border: 1px solid #e2e8f0;
+
+            border-radius: 12px;
+
+            min-height: 120px;
+
             white-space: pre-wrap;
             word-break: break-word;
-            min-height: 100px;
+
+            line-height: 1.7;
+
+            color: #1e293b;
+        }
+
+        .output-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+
+            color: #64748b;
+
+            margin-bottom: 8px;
+        }
+
+        .error-text {
+            color: #b91c1c;
+
+            background: #fee2e2;
+
+            border: 1px solid #fecaca;
+
+            border-radius: 10px;
+
+            padding: 12px;
+        }
+
+        .info-box {
+            margin-top: 16px;
+
+            padding: 12px 14px;
+
+            background: #eff6ff;
+
+            border: 1px solid #dbeafe;
+
+            border-radius: 10px;
+
+            color: #1e40af;
+
+            font-size: 0.82rem;
+
             line-height: 1.6;
         }
+
         .footer {
-            margin-top: 30px;
-            font-size: 0.8rem;
-            color: #9ca3af;
+            margin-top: 25px;
+
             text-align: center;
+
+            color: #94a3b8;
+
+            font-size: 0.75rem;
+
+            line-height: 1.6;
         }
-        .error-text {
-            color: #dc2626;
-            background: #fee2e2;
-            padding: 8px 12px;
-            border-radius: 8px;
-            border: 1px solid #fecaca;
+
+        .footer a {
+            color: #64748b;
+        }
+
+        @media (max-width: 600px) {
+
+            body {
+                padding: 20px 14px;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
         }
     </style>
 </head>
+
 <body>
 
     <h1>
         🐉 Serow Qwen2.5 0.5B
         <span class="badge">ONNX / Web</span>
     </h1>
-    <p>ブラウザ上で動作する軽量チャットAIです。初回ロード時はモデル（約1GB）のダウンロードが発生します。</p>
+
+    <p class="description">
+        ブラウザだけで動作する軽量チャットAIです。
+        初回起動時にモデルをダウンロードします。
+    </p>
 
     <div class="card">
-        <!-- 進捗バー -->
+
+        <!-- =========================
+             STATUS
+        ========================== -->
+
+        <div class="status-header">
+            <span>モデル状態</span>
+            <span id="device-text">準備中</span>
+        </div>
+
         <div class="status-bar">
-            <div id="progress-fill" class="status-bar-fill"></div>
+            <div
+                id="progress-fill"
+                class="status-bar-fill">
+            </div>
         </div>
-        <div id="status-text">💡 「生成する」ボタンを押すとモデルを読み込みます。</div>
 
-        <!-- 入力エリア -->
-        <textarea id="user-input" rows="3" placeholder="メッセージを入力してください... (例: こんにちは！)">こんにちは！今日はどんな一日でしたか？</textarea>
-        
+        <div id="status-text">
+            💡 「生成する」を押すとモデルを読み込みます。
+        </div>
+
+
+        <!-- =========================
+             INPUT
+        ========================== -->
+
+        <textarea
+            id="user-input"
+            rows="4"
+            placeholder="メッセージを入力してください..."
+        >こんにちは！今日はどんな一日でしたか？</textarea>
+
+
         <div class="button-group">
-            <button id="generate-btn">🚀 生成する</button>
-            <button id="clear-btn" class="secondary">🗑️ クリア</button>
+
+            <button id="generate-btn">
+                🚀 生成する
+            </button>
+
+            <button
+                id="clear-btn"
+                class="secondary"
+            >
+                🗑️ クリア
+            </button>
+
         </div>
 
-        <!-- 出力エリア -->
-        <div id="output">ここに応答が表示されます。</div>
+
+        <!-- =========================
+             INFO
+        ========================== -->
+
+        <div class="info-box">
+            💡 初回起動時は約1GBのモデルをダウンロードします。
+            一度読み込めば、同じページを開いている間は再利用されます。
+        </div>
+
+
+        <!-- =========================
+             OUTPUT
+        ========================== -->
+
+        <div class="output-label">
+            🤖 AIの回答
+        </div>
+
+        <div id="output">
+            ここに応答が表示されます。
+        </div>
+
     </div>
+
 
     <div class="footer">
-        Model: <a href="https://huggingface.co/WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX" target="_blank">WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX</a>
-        | Powered by Transformers.js
+
+        Model:
+        <a
+            href="https://huggingface.co/WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX"
+            target="_blank"
+            rel="noopener noreferrer"
+        >
+            WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX
+        </a>
+
+        <br>
+
+        Powered by Transformers.js
+
     </div>
 
+
+    <!-- =========================
+         JAVASCRIPT
+    ========================== -->
+
     <script type="module">
-        // --- JavaScript メインロジック ---
-        import { pipeline } from '@huggingface/transformers';
 
-        // DOM 要素の参照
-        const statusText = document.getElementById('status-text');
-        const progressFill = document.getElementById('progress-fill');
-        const outputDiv = document.getElementById('output');
-        const userInput = document.getElementById('user-input');
-        const generateBtn = document.getElementById('generate-btn');
-        const clearBtn = document.getElementById('clear-btn');
+        import {
+            pipeline
+        } from '@huggingface/transformers';
 
-        // モデルID（あなたのHugging Faceリポジトリ）
-        const MODEL_ID = 'WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX';
 
-        // グローバルにパイプラインを保持（再読み込み防止）
+        // ==========================================
+        // CONFIG
+        // ==========================================
+
+        const MODEL_ID =
+            'WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX';
+
+
+        // ==========================================
+        // DOM
+        // ==========================================
+
+        const statusText =
+            document.getElementById('status-text');
+
+        const progressFill =
+            document.getElementById('progress-fill');
+
+        const outputDiv =
+            document.getElementById('output');
+
+        const userInput =
+            document.getElementById('user-input');
+
+        const generateBtn =
+            document.getElementById('generate-btn');
+
+        const clearBtn =
+            document.getElementById('clear-btn');
+
+        const deviceText =
+            document.getElementById('device-text');
+
+
+        // ==========================================
+        // GLOBAL STATE
+        // ==========================================
+
         let generator = null;
+
         let isLoading = false;
 
-        // --- 進捗表示の更新関数 ---
+        let useWebGPU = false;
+
+
+        // ==========================================
+        // PROGRESS
+        // ==========================================
+
         function updateProgress(progress) {
-            if (progress === undefined || progress === null) return;
-            const percent = Math.min(100, Math.round(progress * 100));
-            progressFill.style.width = `${percent}%`;
-            if (percent < 100) {
-                statusText.textContent = `⏳ モデルをダウンロード中... ${percent}%`;
-            } else {
-                statusText.textContent = '✅ モデルの読み込みが完了しました！';
-            }
-        }
 
-        // --- モデルの読み込み関数 (初回のみ実行) ---
-        async function loadModel() {
-            if (generator) return generator;
-            if (isLoading) {
-                statusText.textContent = '⏳ すでに読み込み中です... お待ちください。';
-                return null;
-            }
-
-            isLoading = true;
-            generateBtn.disabled = true;
-            statusText.textContent = '⏳ モデルを初期化しています... (初回は数分かかります)';
-            progressFill.style.width = '0%';
-
-            try {
-                // ★★★ 修正ポイント ★★★
-                // model_file_name を pipeline のルートオプションとして正しく指定
-                generator = await pipeline('text-generation', MODEL_ID, {
-                    // ここが正しい配置場所です（progress_callback の外側）
-                    model_file_name: 'model.onnx',
-
-                    // 進捗コールバック
-                    progress_callback: (data) => {
-                        if (data.status === 'progress') {
-                            updateProgress(data.progress);
-                        } else if (data.status === 'done') {
-                            progressFill.style.width = '100%';
-                            statusText.textContent = '✅ モデルの準備が整いました！';
-                            generateBtn.disabled = false;
-                        } else if (data.status === 'error') {
-                            statusText.textContent = `❌ エラー: ${data.error || '不明なエラー'}`;
-                            generateBtn.disabled = true;
-                        }
-                    },
-                    // モデルのデータ型指定（あなたのONNXはfp16でエクスポート済み）
-                    dtype: 'fp16',
-                });
-
-                // 読み込み完了後の最終処理
-                progressFill.style.width = '100%';
-                statusText.textContent = '✅ モデルの準備が整いました！';
-                generateBtn.disabled = false;
-                isLoading = false;
-                return generator;
-
-            } catch (error) {
-                console.error('モデル読み込みエラー:', error);
-                statusText.innerHTML = `<span class="error-text">❌ 読み込みに失敗しました: ${error.message}</span>`;
-                generateBtn.disabled = true;
-                isLoading = false;
-                throw error;
-            }
-        }
-
-        // --- テキスト生成の実行 ---
-        async function generateText() {
-            const inputText = userInput.value.trim();
-            if (!inputText) {
-                outputDiv.textContent = '⚠️ テキストを入力してください。';
+            if (
+                progress === undefined ||
+                progress === null ||
+                Number.isNaN(Number(progress))
+            ) {
                 return;
             }
 
-            // ボタンを無効化（連打防止）
-            generateBtn.disabled = true;
-            outputDiv.textContent = '⏳ 考え中... (推論には少し時間がかかります)';
+            const percent =
+                Math.min(
+                    100,
+                    Math.max(
+                        0,
+                        Math.round(Number(progress))
+                    )
+                );
+
+            progressFill.style.width =
+                `${percent}%`;
+
+            statusText.textContent =
+                `⏳ モデルをダウンロード中... ${percent}%`;
+        }
+
+
+        // ==========================================
+        // WEBGPU CHECK
+        // ==========================================
+
+        async function checkWebGPU() {
 
             try {
-                // 1. モデルが読み込まれていることを確認
-                const gen = await loadModel();
-                if (!gen) {
-                    outputDiv.textContent = '❌ モデルの読み込みに失敗しました。再読み込みしてください。';
-                    generateBtn.disabled = false;
-                    return;
-                }
 
-                // 2. Qwen2.5 用のチャットメッセージ形式
-                //    Transformers.js は内部で apply_chat_template を呼び出してくれます
-                const messages = [
-                    { role: 'system', content: 'あなたは親切で役立つアシスタントです。' },
-                    { role: 'user', content: inputText }
-                ];
+                if (
+                    typeof navigator !== 'undefined' &&
+                    'gpu' in navigator
+                ) {
 
-                // 3. 推論実行
-                const startTime = performance.now();
-                const result = await gen(messages, {
-                    max_new_tokens: 256,
-                    do_sample: true,
-                    temperature: 0.7,
-                    top_p: 0.9,
-                    repetition_penalty: 1.1,
-                });
-                const endTime = performance.now();
-                const timeSec = ((endTime - startTime) / 1000).toFixed(1);
+                    const adapter =
+                        await navigator.gpu.requestAdapter();
 
-                // 4. 結果を整形して表示
-                if (result && result.length > 0) {
-                    let fullText = result[0].generated_text;
-                    
-                    // アシスタントの返答だけを抽出する試み（Qwen2.5 の特殊トークンに対応）
-                    // 注: Transformers.js のバージョンによって挙動が異なる場合があります
-                    const assistantTag = '<|im_start|>assistant';
-                    let reply = fullText;
-                    if (fullText.includes(assistantTag)) {
-                        // 最後のアシスタントセクションを抽出
-                        const parts = fullText.split(assistantTag);
-                        reply = parts[parts.length - 1].replace(/<\|im_end\|>/g, '').trim();
-                        // システムプロンプトが残っている場合の簡易対処
-                        if (reply.includes('<|im_start|>')) {
-                            reply = fullText; // フォールバック: 全体表示
-                        }
+                    if (adapter) {
+                        return true;
                     }
-                    
-                    outputDiv.textContent = reply || '(応答が空でした)';
-                    
-                    // 生成時間を追記（デバッグ用）
-                    outputDiv.textContent += `\n\n--- ⏱️ ${timeSec}秒 ---`;
-                } else {
-                    outputDiv.textContent = '⚠️ 応答が取得できませんでした。';
                 }
 
             } catch (error) {
-                console.error('推論エラー:', error);
-                outputDiv.innerHTML = `<span class="error-text">❌ エラーが発生しました: ${error.message}</span>`;
-            } finally {
-                // ボタンを再度有効化
-                generateBtn.disabled = false;
+
+                console.warn(
+                    'WebGPUチェック失敗:',
+                    error
+                );
+
             }
+
+            return false;
         }
 
-        // --- UI イベントのバインド ---
-        generateBtn.addEventListener('click', generateText);
 
-        clearBtn.addEventListener('click', () => {
-            userInput.value = '';
-            outputDiv.textContent = 'ここに応答が表示されます。';
-        });
+        // ==========================================
+        // LOAD MODEL
+        // ==========================================
 
-        // Enterキーで送信 (Shift+Enterで改行)
-        userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                generateBtn.click();
+        async function loadModel() {
+
+            if (generator) {
+                return generator;
             }
-        });
 
-        // 初期状態ではボタンを有効にしておく（押すと読み込み開始）
-        generateBtn.disabled = false;
-        console.log('✅ アプリ準備完了！モデルID:', MODEL_ID);
-        console.log('ℹ️ 注意: このモデルは ONNX フォーマットでエクスポートされています。');
+            if (isLoading) {
+
+                statusText.textContent =
+                    '⏳ すでにモデルを読み込んでいます。';
+
+                return null;
+            }
+
+
+            isLoading = true;
+
+            generateBtn.disabled = true;
+
+            progressFill.style.width = '0%';
+
+            statusText.textContent =
+                '⏳ モデルを初期化しています...';
+
+
+            try {
+
+                // ----------------------------------
+                // WebGPU detection
+                // ----------------------------------
+
+                useWebGPU =
+                    await checkWebGPU();
+
+
+                if (useWebGPU) {
+
+                    deviceText.textContent =
+                        '⚡ WebGPU';
+
+                    statusText.textContent =
+                        '⚡ WebGPUを使用してモデルを読み込みます...';
+
+                } else {
+
+                    deviceText.textContent =
+                        '💻 CPU';
+
+                    statusText.textContent =
+                        '💻 CPUモードでモデルを読み込みます...';
+                }
+
+
+                // ----------------------------------
+                // Pipeline options
+                // ----------------------------------
+
+                const options = {
+
+                    /*
+                     * 重要:
+                     *
+                     * model_file_name は指定しない。
+                     *
+                     * dtype: 'fp16' により
+                     *
+                     * onnx/model_fp16.onnx
+                     *
+                     * が選択される。
+                     */
+
+                    dtype: 'fp16',
+
+
+                    // Progress callback
+
+                    progress_callback: (data) => {
+
+                        console.log(
+                            'Model progress:',
+                            data
+                        );
+
+
+                        if (
+                            data.status ===
+                            'progress'
+                        ) {
+
+                            updateProgress(
+                                data.progress
+                            );
+
+                        }
+
+
+                        else if (
+                            data.status ===
+                            'done'
+                        ) {
+
+                            progressFill.style.width =
+                                '100%';
+
+                        }
+
+
+                        else if (
+                            data.status ===
+                            'ready'
+                        ) {
+
+                            progressFill.style.width =
+                                '100%';
+
+                        }
+
+                    }
+
+                };
+
+
+                // ----------------------------------
+                // WebGPU
+                // ----------------------------------
+
+                if (useWebGPU) {
+
+                    options.device =
+                        'webgpu';
+                }
+
+
+                // ----------------------------------
+                // Create pipeline
+                // ----------------------------------
+
+                generator =
+                    await pipeline(
+                        'text-generation',
+                        MODEL_ID,
+                        options
+                    );
+
+
+                // ----------------------------------
+                // Finished
+                // ----------------------------------
+
+                progressFill.style.width =
+                    '100%';
+
+                statusText.textContent =
+                    useWebGPU
+                        ? '✅ モデル準備完了（WebGPU）'
+                        : '✅ モデル準備完了（CPU）';
+
+
+                generateBtn.disabled =
+                    false;
+
+                isLoading =
+                    false;
+
+
+                return generator;
+
+            }
+
+
+            catch (error) {
+
+                console.error(
+                    'モデル読み込みエラー:',
+                    error
+                );
+
+
+                generator = null;
+
+                isLoading = false;
+
+                generateBtn.disabled =
+                    false;
+
+
+                progressFill.style.width =
+                    '0%';
+
+
+                statusText.innerHTML = `
+                    <span class="error-text">
+                        ❌ モデルの読み込みに失敗しました。<br><br>
+                        ${escapeHtml(error.message)}
+                    </span>
+                `;
+
+
+                throw error;
+            }
+
+        }
+
+
+        // ==========================================
+        // GENERATE
+        // ==========================================
+
+        async function generateText() {
+
+            const inputText =
+                userInput.value.trim();
+
+
+            if (!inputText) {
+
+                outputDiv.textContent =
+                    '⚠️ メッセージを入力してください。';
+
+                return;
+            }
+
+
+            generateBtn.disabled =
+                true;
+
+            clearBtn.disabled =
+                true;
+
+
+            outputDiv.textContent =
+                '⏳ AIが考えています...';
+
+
+            try {
+
+                // ----------------------------------
+                // Load
+                // ----------------------------------
+
+                const gen =
+                    await loadModel();
+
+
+                if (!gen) {
+
+                    throw new Error(
+                        'モデルを読み込めませんでした。'
+                    );
+                }
+
+
+                // ----------------------------------
+                // Messages
+                // ----------------------------------
+
+                const messages = [
+
+                    {
+                        role: 'system',
+
+                        content:
+                            'あなたは親切で役立つアシスタントです。日本語で自然に回答してください。'
+                    },
+
+                    {
+                        role: 'user',
+
+                        content:
+                            inputText
+                    }
+
+                ];
+
+
+                // ----------------------------------
+                // Generate
+                // ----------------------------------
+
+                const startTime =
+                    performance.now();
+
+
+                const result =
+                    await gen(
+                        messages,
+                        {
+
+                            max_new_tokens: 256,
+
+                            do_sample: true,
+
+                            temperature: 0.7,
+
+                            top_p: 0.9,
+
+                            repetition_penalty: 1.1,
+
+                            return_full_text: false
+
+                        }
+                    );
+
+
+                const endTime =
+                    performance.now();
+
+
+                const timeSec =
+                    (
+                        (endTime - startTime)
+                        / 1000
+                    ).toFixed(1);
+
+
+                console.log(
+                    'Generation result:',
+                    result
+                );
+
+
+                // ----------------------------------
+                // Extract answer
+                // ----------------------------------
+
+                const reply =
+                    extractReply(result);
+
+
+                if (!reply) {
+
+                    outputDiv.textContent =
+                        '⚠️ AIから空の応答が返されました。';
+
+                } else {
+
+                    outputDiv.textContent =
+                        reply +
+                        `\n\n--- ⏱️ ${timeSec}秒 ---`;
+                }
+
+
+            }
+
+
+            catch (error) {
+
+                console.error(
+                    '推論エラー:',
+                    error
+                );
+
+
+                outputDiv.innerHTML = `
+                    <div class="error-text">
+                        ❌ エラーが発生しました。<br><br>
+                        ${escapeHtml(error.message)}
+                    </div>
+                `;
+
+            }
+
+
+            finally {
+
+                generateBtn.disabled =
+                    false;
+
+                clearBtn.disabled =
+                    false;
+            }
+
+        }
+
+
+        // ==========================================
+        // RESULT PARSER
+        // ==========================================
+
+        function extractReply(result) {
+
+            if (
+                !result ||
+                !Array.isArray(result) ||
+                result.length === 0
+            ) {
+                return '';
+            }
+
+
+            const generated =
+                result[0].generated_text;
+
+
+            // ----------------------------------
+            // New Transformers.js chat format
+            // ----------------------------------
+
+            if (Array.isArray(generated)) {
+
+                const last =
+                    generated[
+                        generated.length - 1
+                    ];
+
+
+                if (
+                    last &&
+                    typeof last === 'object'
+                ) {
+
+                    return cleanReply(
+                        last.content || ''
+                    );
+                }
+
+
+                return cleanReply(
+                    String(last || '')
+                );
+            }
+
+
+            // ----------------------------------
+            // String format
+            // ----------------------------------
+
+            if (
+                typeof generated === 'string'
+            ) {
+
+                let text =
+                    generated;
+
+
+                const assistantTag =
+                    '<|im_start|>assistant';
+
+
+                if (
+                    text.includes(
+                        assistantTag
+                    )
+                ) {
+
+                    const parts =
+                        text.split(
+                            assistantTag
+                        );
+
+
+                    text =
+                        parts[
+                            parts.length - 1
+                        ];
+                }
+
+
+                return cleanReply(text);
+            }
+
+
+            return '';
+        }
+
+
+        // ==========================================
+        // CLEAN RESPONSE
+        // ==========================================
+
+        function cleanReply(text) {
+
+            if (!text) {
+                return '';
+            }
+
+
+            return String(text)
+
+                .replace(
+                    /<\|im_end\|>/g,
+                    ''
+                )
+
+                .replace(
+                    /<\|endoftext\|>/g,
+                    ''
+                )
+
+                .replace(
+                    /<\|im_start\|>assistant/g,
+                    ''
+                )
+
+                .trim();
+        }
+
+
+        // ==========================================
+        // HTML ESCAPE
+        // ==========================================
+
+        function escapeHtml(text) {
+
+            return String(text)
+
+                .replace(
+                    /&/g,
+                    '&amp;'
+                )
+
+                .replace(
+                    /</g,
+                    '&lt;'
+                )
+
+                .replace(
+                    />/g,
+                    '&gt;'
+                )
+
+                .replace(
+                    /"/g,
+                    '&quot;'
+                )
+
+                .replace(
+                    /'/g,
+                    '&#039;'
+                );
+        }
+
+
+        // ==========================================
+        // CLEAR
+        // ==========================================
+
+        clearBtn.addEventListener(
+            'click',
+            () => {
+
+                userInput.value = '';
+
+                outputDiv.textContent =
+                    'ここに応答が表示されます。';
+
+                userInput.focus();
+            }
+        );
+
+
+        // ==========================================
+        // GENERATE BUTTON
+        // ==========================================
+
+        generateBtn.addEventListener(
+            'click',
+            generateText
+        );
+
+
+        // ==========================================
+        // ENTER
+        // ==========================================
+
+        userInput.addEventListener(
+            'keydown',
+            (event) => {
+
+                if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey
+                ) {
+
+                    event.preventDefault();
+
+                    generateBtn.click();
+                }
+            }
+        );
+
+
+        // ==========================================
+        // INITIALIZE
+        // ==========================================
+
+        generateBtn.disabled =
+            false;
+
+        clearBtn.disabled =
+            false;
+
+
+        console.log(
+            '🐉 Serow AI ready'
+        );
+
+        console.log(
+            'Model:',
+            MODEL_ID
+        );
+
     </script>
+
 </body>
 </html>

@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Serow GGUF チャット (wllama)</title>
+
+<title>wllama Qwen2.5 診断</title>
+
 <style>
   :root {
     --bg: #0f1115;
@@ -12,187 +14,1088 @@
     --text: #e6e8eb;
     --muted: #9aa1ac;
     --accent: #6ea8fe;
-    --user-bubble: #2a3550;
-    --bot-bubble: #22252c;
+    --user: #2a3550;
+    --bot: #22252c;
+    --ok: #75d48b;
+    --error: #ff7777;
   }
-  * { box-sizing: border-box; }
+
+  * {
+    box-sizing: border-box;
+  }
+
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+
     background: var(--bg);
     color: var(--text);
-    height: 100vh;
+
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 {
+    font-size: 16px;
+    margin: 0 0 5px;
+  }
+
+  .model-id {
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
+  #status {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+
+  #progress-bar {
+    height: 4px;
+    background: var(--border);
+    overflow: hidden;
+  }
+
+  #progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.15s ease;
+  }
+
+  #diagnostics {
+    margin: 12px 16px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.6;
+
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  #chat {
+    margin: 12px 16px;
+    min-height: 250px;
+    max-height: 45vh;
+
+    overflow-y: auto;
+
     display: flex;
     flex-direction: column;
+    gap: 10px;
   }
-  header { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-  header h1 { font-size: 15px; margin: 0 0 4px; }
-  header .model-id { font-size: 12px; color: var(--muted); word-break: break-all; }
-  #status { font-size: 12px; color: var(--muted); padding: 8px 16px; border-bottom: 1px solid var(--border); }
-  #progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 0 16px 10px; }
-  #progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.15s ease; }
-  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 85%; padding: 10px 12px; border-radius: 12px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-  .msg.user { align-self: flex-end; background: var(--user-bubble); border-bottom-right-radius: 2px; }
-  .msg.bot { align-self: flex-start; background: var(--bot-bubble); border-bottom-left-radius: 2px; }
-  .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
-  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel); }
-  textarea { flex: 1; resize: none; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; max-height: 120px; }
-  button { background: var(--accent); color: #0b0f1a; border: none; border-radius: 8px; padding: 0 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .msg {
+    max-width: 90%;
+    padding: 10px 12px;
+    border-radius: 10px;
+
+    font-size: 14px;
+    line-height: 1.5;
+
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    background: var(--user);
+  }
+
+  .msg.bot {
+    align-self: flex-start;
+    background: var(--bot);
+  }
+
+  .msg.system {
+    align-self: center;
+    color: var(--muted);
+    font-size: 12px;
+    background: transparent;
+  }
+
+  #controls {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  #mode {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  #mode button {
+    flex: 1;
+  }
+
+  button {
+    background: var(--accent);
+    color: #0b0f1a;
+
+    border: none;
+    border-radius: 7px;
+
+    padding: 9px 12px;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  button.secondary {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  textarea {
+    width: 100%;
+
+    resize: none;
+
+    background: var(--bg);
+    color: var(--text);
+
+    border: 1px solid var(--border);
+    border-radius: 8px;
+
+    padding: 10px 12px;
+
+    font-size: 14px;
+    font-family: inherit;
+
+    min-height: 45px;
+    max-height: 120px;
+  }
+
+  #send {
+    width: 100%;
+    margin-top: 8px;
+  }
 </style>
 </head>
+
 <body>
 
 <header>
-  <h1>Qwen2.5-0.5B-Instruct チャット (wllama / GGUF)</h1>
-  <div class="model-id" id="model-label">Qwen/Qwen2.5-0.5B-Instruct-GGUF (q4_k_m)</div>
+  <h1>Qwen2.5-0.5B-Instruct / wllama 診断</h1>
+
+  <div class="model-id" id="model-label">
+    Qwen2.5-0.5B-Instruct-GGUF
+  </div>
 </header>
 
-<div id="status">初期化中...</div>
-<div id="progress-bar"><div id="progress-fill"></div></div>
+
+<div id="status">
+  初期化中...
+</div>
+
+<div id="progress-bar">
+  <div id="progress-fill"></div>
+</div>
+
+
+<div id="diagnostics">
+診断情報を取得しています...
+</div>
+
+
 <div id="chat"></div>
 
-<form id="form">
-  <textarea id="input" rows="1" placeholder="メッセージを入力..." disabled></textarea>
-  <button id="send" type="submit" disabled>送信</button>
-</form>
+
+<div id="controls">
+
+  <div id="mode">
+
+    <button
+      id="rawButton"
+      class="secondary"
+      disabled
+    >
+      Raw Completion
+    </button>
+
+    <button
+      id="chatButton"
+      class="secondary"
+      disabled
+    >
+      Chat Completion
+    </button>
+
+  </div>
+
+
+  <textarea
+    id="input"
+    rows="1"
+    placeholder="テストする文章を入力..."
+    disabled
+  ></textarea>
+
+
+  <button
+    id="send"
+    disabled
+  >
+    実行
+  </button>
+
+</div>
+
 
 <script type="module">
-  import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
 
-  // wasm-from-cdn.js のヘルパーはバンドラー前提でブラウザ直読みだと解決に失敗するため、
-  // wasmファイルのURLを直接指定する
-  const CONFIG_PATHS = {
-    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm",
-  };
+import {
+  Wllama
+} from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
 
-  // まずは動作確認用に、Qwen公式のGGUFを直接指定(Serowではなく素のQwen2.5-0.5B)
-  const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
 
-  const statusEl = document.getElementById("status");
-  const progressFill = document.getElementById("progress-fill");
-  const modelLabel = document.getElementById("model-label");
-  const chatEl = document.getElementById("chat");
-  const formEl = document.getElementById("form");
-  const inputEl = document.getElementById("input");
-  const sendEl = document.getElementById("send");
+// ======================================================
+// 設定
+// ======================================================
 
-  modelLabel.textContent = MODEL_URL;
+const CONFIG_PATHS = {
 
-  const messages = [
-    { role: "system", content: "You are a helpful assistant." }
-  ];
+  default:
+    "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm"
 
-  function addMessage(role, text) {
-    const div = document.createElement("div");
-    div.className = "msg " + role;
-    div.textContent = text;
-    chatEl.appendChild(div);
-    chatEl.scrollTop = chatEl.scrollHeight;
-    return div;
-  }
+};
 
-  function setStatus(text) {
-    statusEl.textContent = text;
-  }
 
-  let wllama;
+// Qwen2.5 0.5B Q4_K_M
+const MODEL_URL =
+  "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
 
-  async function init() {
-    wllama = new Wllama(CONFIG_PATHS);
 
-    setStatus("モデルをダウンロード中...");
-    try {
-      await wllama.loadModelFromUrl(MODEL_URL, {
+// ======================================================
+// DOM
+// ======================================================
+
+const statusEl =
+  document.getElementById("status");
+
+const progressFill =
+  document.getElementById("progress-fill");
+
+const diagnosticsEl =
+  document.getElementById("diagnostics");
+
+const modelLabel =
+  document.getElementById("model-label");
+
+const chatEl =
+  document.getElementById("chat");
+
+const inputEl =
+  document.getElementById("input");
+
+const sendEl =
+  document.getElementById("send");
+
+const rawButton =
+  document.getElementById("rawButton");
+
+const chatButton =
+  document.getElementById("chatButton");
+
+
+// ======================================================
+// 状態
+// ======================================================
+
+let wllama = null;
+
+let selectedMode = "chat";
+
+let loaded = false;
+
+
+// ======================================================
+// ユーティリティ
+// ======================================================
+
+function setStatus(text) {
+
+  statusEl.textContent = text;
+
+}
+
+
+function setProgress(value) {
+
+  value = Math.max(
+    0,
+    Math.min(100, value)
+  );
+
+  progressFill.style.width =
+    value + "%";
+
+}
+
+
+function addMessage(
+  type,
+  text
+) {
+
+  const div =
+    document.createElement("div");
+
+  div.className =
+    "msg " + type;
+
+  div.textContent =
+    text;
+
+  chatEl.appendChild(div);
+
+  chatEl.scrollTop =
+    chatEl.scrollHeight;
+
+  return div;
+
+}
+
+
+function logDiagnostic(text) {
+
+  diagnosticsEl.textContent +=
+    "\n" + text;
+
+}
+
+
+// ======================================================
+// 環境診断
+// ======================================================
+
+function createDiagnostics() {
+
+  const lines = [];
+
+  lines.push(
+    "===== Browser ====="
+  );
+
+  lines.push(
+    "UserAgent: " +
+    navigator.userAgent
+  );
+
+  lines.push(
+    "Platform: " +
+    navigator.platform
+  );
+
+  lines.push(
+    "CPU threads: " +
+    (
+      navigator.hardwareConcurrency ??
+      "unknown"
+    )
+  );
+
+
+  lines.push(
+    "\n===== APIs ====="
+  );
+
+  lines.push(
+    "WebAssembly: " +
+    (
+      typeof WebAssembly !== "undefined"
+        ? "YES"
+        : "NO"
+    )
+  );
+
+  lines.push(
+    "WebGPU: " +
+    (
+      "gpu" in navigator
+        ? "YES"
+        : "NO"
+    )
+  );
+
+
+  lines.push(
+    "\n===== Model ====="
+  );
+
+  lines.push(
+    MODEL_URL
+  );
+
+
+  lines.push(
+    "\n===== wllama ====="
+  );
+
+  lines.push(
+    "@wllama/wllama 3.5.1"
+  );
+
+
+  lines.push(
+    "\n===== Initial configuration ====="
+  );
+
+  lines.push(
+    "n_ctx = 4096"
+  );
+
+  lines.push(
+    "n_gpu_layers = 0"
+  );
+
+  lines.push(
+    "n_threads = 1"
+  );
+
+
+  diagnosticsEl.textContent =
+    lines.join("\n");
+
+}
+
+
+// ======================================================
+// モード選択
+// ======================================================
+
+function selectMode(mode) {
+
+  selectedMode = mode;
+
+  rawButton.classList.toggle(
+    "secondary",
+    mode !== "raw"
+  );
+
+  chatButton.classList.toggle(
+    "secondary",
+    mode !== "chat"
+  );
+
+  setStatus(
+    mode === "raw"
+      ? "Raw Completion モード"
+      : "Chat Completion モード"
+  );
+
+}
+
+
+rawButton.addEventListener(
+  "click",
+  () => selectMode("raw")
+);
+
+
+chatButton.addEventListener(
+  "click",
+  () => selectMode("chat")
+);
+
+
+// ======================================================
+// モデル読み込み
+// ======================================================
+
+async function init() {
+
+  createDiagnostics();
+
+  modelLabel.textContent =
+    MODEL_URL;
+
+
+  try {
+
+    setStatus(
+      "wllamaを初期化しています..."
+    );
+
+    setProgress(2);
+
+
+    wllama =
+      new Wllama(CONFIG_PATHS);
+
+
+    logDiagnostic(
+      "\nWllama instance: created"
+    );
+
+
+    setStatus(
+      "モデルをダウンロード中..."
+    );
+
+    setProgress(5);
+
+
+    await wllama.loadModelFromUrl(
+      MODEL_URL,
+      {
+
+        /*
+         * まずはCPU固定。
+         *
+         * GPUで文字化けしている可能性を
+         * 完全に切り分けるため。
+         */
+
+        n_gpu_layers: 0,
+
+        n_threads: 1,
+
         n_ctx: 4096,
-        n_gpu_layers: 9999, // 対応環境ならWebGPU/GPUオフロードを最大限使う
-        n_threads: 1, // まずはシングルスレッド固定で検証(マルチスレッドはCOOP/COEP無しだと壊れることがある)
-        progressCallback: ({ loaded, total }) => {
-          const pct = total ? Math.round((loaded / total) * 100) : 0;
-          progressFill.style.width = pct + "%";
-          setStatus(`ダウンロード中... ${pct}% (${(loaded / 1e6).toFixed(0)}MB / ${(total / 1e6).toFixed(0)}MB)`);
-        },
-      });
-    } catch (err) {
-      console.error("[load error]", err);
-      addMessage("system", "読み込みエラー: " + (err?.message ?? String(err)));
-      setStatus("読み込み失敗");
-      return;
-    }
 
-    progressFill.style.width = "100%";
-    setStatus("準備完了(GGUF埋め込みのchat_templateをそのまま利用しています)");
+
+        progressCallback:
+          ({ loaded, total }) => {
+
+            const pct =
+              total
+                ? (loaded / total) * 100
+                : 0;
+
+
+            setProgress(pct);
+
+
+            const loadedMB =
+              (
+                loaded / 1024 / 1024
+              ).toFixed(1);
+
+
+            const totalMB =
+              (
+                total / 1024 / 1024
+              ).toFixed(1);
+
+
+            setStatus(
+              `モデルダウンロード中...\n` +
+              `${pct.toFixed(1)}%\n` +
+              `${loadedMB} MB / ${totalMB} MB`
+            );
+
+          }
+
+      }
+    );
+
+
+    loaded = true;
+
+    setProgress(100);
+
+
+    logDiagnostic(
+      "\nModel load: SUCCESS"
+    );
+
+
+    setStatus(
+      "モデル読み込み完了\n" +
+      "CPU推論モードで待機中"
+    );
+
+
+    rawButton.disabled = false;
+    chatButton.disabled = false;
+
     inputEl.disabled = false;
     sendEl.disabled = false;
+
+    selectMode("chat");
+
     inputEl.focus();
+
+
+  } catch (error) {
+
+    console.error(
+      "[MODEL LOAD ERROR]",
+      error
+    );
+
+
+    logDiagnostic(
+      "\n===== LOAD ERROR =====\n" +
+      (error?.stack ??
+       error?.message ??
+       String(error))
+    );
+
+
+    setStatus(
+      "モデル読み込み失敗"
+    );
+
+
+    addMessage(
+      "system",
+      "モデル読み込みエラー:\n" +
+      (
+        error?.message ??
+        String(error)
+      )
+    );
+
   }
 
-  async function send(text) {
-    messages.push({ role: "user", content: text });
-    addMessage("user", text);
+}
 
-    const botDiv = addMessage("bot", "");
-    let acc = "";
 
-    sendEl.disabled = true;
-    inputEl.disabled = true;
-    setStatus("生成中...");
+// ======================================================
+// Raw Completion
+// ======================================================
 
-    try {
-      // GGUFに埋め込まれたchat_templateがそのまま使われるので、
-      // Serow側で特別なテンプレート指定は不要
-      const stream = await wllama.createChatCompletion({
-        messages,
-        max_tokens: 512,
+async function runRaw(text) {
+
+  const bot =
+    addMessage(
+      "bot",
+      "Raw生成中..."
+    );
+
+
+  setStatus(
+    "Raw Completion 実行中..."
+  );
+
+
+  const start =
+    performance.now();
+
+
+  try {
+
+    /*
+     * Rawではchat templateを一切使わない。
+     *
+     * これでモデルそのものの
+     * tokenizer / inference が
+     * 正常か確認する。
+     */
+
+    const prompt =
+      text;
+
+
+    logDiagnostic(
+      "\n===== RAW TEST ====="
+    );
+
+    logDiagnostic(
+      "Prompt: " + prompt
+    );
+
+
+    const stream =
+      await wllama.createCompletion({
+
+        prompt,
+
+        max_tokens: 128,
+
         temperature: 0.7,
+
         top_p: 0.9,
-        stream: true,
+
+        top_k: 40,
+
+        stream: true
+
       });
 
-      for await (const chunk of stream) {
-        const delta = chunk.choices?.[0]?.delta?.content ?? "";
-        if (delta) {
-          acc += delta;
-          botDiv.textContent = acc;
-          chatEl.scrollTop = chatEl.scrollHeight;
-        }
+
+    let output = "";
+
+
+    for await (
+      const chunk of stream
+    ) {
+
+      const delta =
+        chunk
+          ?.choices?.[0]
+          ?.text ?? "";
+
+
+      if (delta) {
+
+        output += delta;
+
+        bot.textContent =
+          output;
+
+        chatEl.scrollTop =
+          chatEl.scrollHeight;
+
       }
 
-      messages.push({ role: "assistant", content: acc });
-    } catch (err) {
-      console.error(err);
-      botDiv.textContent = "エラーが発生しました: " + (err?.message ?? String(err));
-    } finally {
-      sendEl.disabled = false;
-      inputEl.disabled = false;
-      inputEl.focus();
-      setStatus("準備完了");
     }
+
+
+    const elapsed =
+      performance.now() -
+      start;
+
+
+    logDiagnostic(
+      "RAW result length: " +
+      output.length
+    );
+
+    logDiagnostic(
+      "RAW elapsed: " +
+      (elapsed / 1000).toFixed(2) +
+      " sec"
+    );
+
+
+    setStatus(
+      "Raw Completion 完了"
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "[RAW ERROR]",
+      error
+    );
+
+
+    bot.textContent =
+      "Raw Error:\n" +
+      (
+        error?.message ??
+        String(error)
+      );
+
+
+    logDiagnostic(
+      "\n===== RAW ERROR =====\n" +
+      (
+        error?.stack ??
+        error?.message ??
+        String(error)
+      )
+    );
+
+
+    setStatus(
+      "Raw Completion エラー"
+    );
+
   }
 
-  formEl.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const text = inputEl.value.trim();
-    if (!text) return;
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-    send(text);
-  });
+}
 
-  inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      formEl.requestSubmit();
+
+// ======================================================
+// Chat Completion
+// ======================================================
+
+async function runChat(text) {
+
+  const bot =
+    addMessage(
+      "bot",
+      "Chat生成中..."
+    );
+
+
+  setStatus(
+    "Chat Completion 実行中..."
+  );
+
+
+  const start =
+    performance.now();
+
+
+  try {
+
+    const messages = [
+
+      {
+        role: "system",
+
+        content:
+          "You are a helpful assistant."
+      },
+
+      {
+        role: "user",
+
+        content: text
+      }
+
+    ];
+
+
+    logDiagnostic(
+      "\n===== CHAT TEST ====="
+    );
+
+    logDiagnostic(
+      "Messages: " +
+      JSON.stringify(messages)
+    );
+
+
+    /*
+     * GGUFに保存されている
+     * chat_templateを利用する。
+     */
+
+    const stream =
+      await wllama.createChatCompletion({
+
+        messages,
+
+        max_tokens: 128,
+
+        temperature: 0.7,
+
+        top_p: 0.9,
+
+        top_k: 40,
+
+        stream: true
+
+      });
+
+
+    let output = "";
+
+
+    for await (
+      const chunk of stream
+    ) {
+
+      const delta =
+        chunk
+          ?.choices?.[0]
+          ?.delta?.content ?? "";
+
+
+      if (delta) {
+
+        output += delta;
+
+        bot.textContent =
+          output;
+
+        chatEl.scrollTop =
+          chatEl.scrollHeight;
+
+      }
+
     }
-  });
 
-  inputEl.addEventListener("input", () => {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
-  });
 
-  init();
+    const elapsed =
+      performance.now() -
+      start;
+
+
+    logDiagnostic(
+      "CHAT result length: " +
+      output.length
+    );
+
+    logDiagnostic(
+      "CHAT elapsed: " +
+      (elapsed / 1000).toFixed(2) +
+      " sec"
+    );
+
+
+    setStatus(
+      "Chat Completion 完了"
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "[CHAT ERROR]",
+      error
+    );
+
+
+    bot.textContent =
+      "Chat Error:\n" +
+      (
+        error?.message ??
+        String(error)
+      );
+
+
+    logDiagnostic(
+      "\n===== CHAT ERROR =====\n" +
+      (
+        error?.stack ??
+        error?.message ??
+        String(error)
+      )
+    );
+
+
+    setStatus(
+      "Chat Completion エラー"
+    );
+
+  }
+
+}
+
+
+// ======================================================
+// 実行
+// ======================================================
+
+async function runTest() {
+
+  const text =
+    inputEl.value.trim();
+
+
+  if (!text || !loaded) {
+    return;
+  }
+
+
+  addMessage(
+    "user",
+    text
+  );
+
+
+  inputEl.value = "";
+
+
+  sendEl.disabled = true;
+  rawButton.disabled = true;
+  chatButton.disabled = true;
+
+
+  try {
+
+    if (selectedMode === "raw") {
+
+      await runRaw(text);
+
+    } else {
+
+      await runChat(text);
+
+    }
+
+  } finally {
+
+    sendEl.disabled = false;
+
+    rawButton.disabled = false;
+    chatButton.disabled = false;
+
+    inputEl.disabled = false;
+
+    inputEl.focus();
+
+  }
+
+}
+
+
+// ======================================================
+// UI
+// ======================================================
+
+sendEl.addEventListener(
+  "click",
+  runTest
+);
+
+
+inputEl.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+
+      event.preventDefault();
+
+      runTest();
+
+    }
+
+  }
+);
+
+
+inputEl.addEventListener(
+  "input",
+  () => {
+
+    inputEl.style.height =
+      "auto";
+
+    inputEl.style.height =
+      Math.min(
+        inputEl.scrollHeight,
+        120
+      ) + "px";
+
+  }
+);
+
+
+// ======================================================
+// Start
+// ======================================================
+
+init();
+
 </script>
 
 </body>

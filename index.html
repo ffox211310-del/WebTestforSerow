@@ -172,19 +172,41 @@
     statusEl.textContent = text;
   }
 
-  // モデルごとにダウンロード進捗を集計して表示
+  // モデルごとにダウンロード進捗を集計して表示(全イベントをconsoleにも出す)
   const fileProgress = new Map();
+  let lastEventAt = Date.now();
   function onProgress(data) {
-    if (data.status === "progress" && typeof data.progress === "number") {
-      fileProgress.set(data.file, data.progress);
+    console.log("[progress]", data);
+    lastEventAt = Date.now();
+
+    if (data.status === "initiate") {
+      setStatus(`ファイル取得開始: ${data.file}`);
+    } else if (data.status === "download") {
+      setStatus(`ダウンロード開始: ${data.file}`);
+    } else if (data.status === "progress") {
+      const pct = typeof data.progress === "number" ? data.progress : 0;
+      fileProgress.set(data.file, pct);
       const values = [...fileProgress.values()];
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       progressFill.style.width = avg.toFixed(1) + "%";
-      setStatus(`モデルをダウンロード中... ${avg.toFixed(0)}%`);
+      const sizeInfo = data.total
+        ? ` (${(data.loaded / 1e6).toFixed(1)}MB / ${(data.total / 1e6).toFixed(1)}MB)`
+        : "";
+      setStatus(`DL中: ${data.file}${sizeInfo}`);
     } else if (data.status === "done") {
+      fileProgress.set(data.file, 100);
       setStatus(`読み込み完了: ${data.file}`);
+    } else if (data.status === "ready") {
+      setStatus("モデル準備完了");
     }
   }
+
+  // 一定時間イベントが来なければ「stall」の可能性をコンソールに警告
+  setInterval(() => {
+    if (Date.now() - lastEventAt > 15000 && !generator) {
+      console.warn("15秒以上進捗イベントが来ていません。Networkタブでリクエストの状態(pending/404/CORS)を確認してください。");
+    }
+  }, 5000);
 
   let generator;
 
@@ -196,25 +218,19 @@
 
     try {
       generator = await pipeline("text-generation", MODEL_ID, {
-        dtype: device === "webgpu" ? "q4f16" : "q4",
+        // このリポジトリはonnx/サブフォルダが無く、model.onnxが直下にあるため
+        // デフォルトの "onnx/" 探索をやめてルート直下を見るようにする
+        subfolder: "",
+        model_file_name: "model",
+        dtype: "fp32", // 量子化ファイルが無く model.onnx (fp32) のみのため
         device,
         progress_callback: onProgress,
       });
     } catch (err) {
-      console.error(err);
-      // WebGPU読み込み失敗時はWASMで再試行
-      if (device === "webgpu") {
-        setStatus("WebGPUでの読み込みに失敗。WASMで再試行します...");
-        generator = await pipeline("text-generation", MODEL_ID, {
-          dtype: "q4",
-          device: "wasm",
-          progress_callback: onProgress,
-        });
-      } else {
-        setStatus("モデルの読み込みに失敗しました: " + err.message);
-        addMessage("system", "エラー: " + err.message);
-        return;
-      }
+      console.error("[load error]", err);
+      addMessage("system", "エラー: " + (err?.message ?? String(err)));
+      setStatus("読み込み失敗。Consoleのエラー内容を確認してください: " + (err?.message ?? String(err)));
+      return; // 自動フォールバックはせず、まずエラーの中身を見る
     }
 
     progressFill.style.width = "100%";

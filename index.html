@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qwen2.5-0.5B-Instruct サンプル (Transformers.js)</title>
+<title>Serow GGUF チャット (wllama)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -25,78 +25,32 @@
     display: flex;
     flex-direction: column;
   }
-  header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-  }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--border); }
   header h1 { font-size: 15px; margin: 0 0 4px; }
-  header .model-id { font-size: 12px; color: var(--muted); }
-  #status {
-    font-size: 12px;
-    color: var(--muted);
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-  }
-  #chat {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .msg {
-    max-width: 85%;
-    padding: 10px 12px;
-    border-radius: 12px;
-    line-height: 1.5;
-    font-size: 14px;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+  header .model-id { font-size: 12px; color: var(--muted); word-break: break-all; }
+  #status { font-size: 12px; color: var(--muted); padding: 8px 16px; border-bottom: 1px solid var(--border); }
+  #progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 0 16px 10px; }
+  #progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.15s ease; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 12px; border-radius: 12px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
   .msg.user { align-self: flex-end; background: var(--user-bubble); border-bottom-right-radius: 2px; }
   .msg.bot { align-self: flex-start; background: var(--bot-bubble); border-bottom-left-radius: 2px; }
   .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
-  form {
-    display: flex;
-    gap: 8px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    background: var(--panel);
-  }
-  textarea {
-    flex: 1;
-    resize: none;
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 14px;
-    font-family: inherit;
-    max-height: 120px;
-  }
-  button {
-    background: var(--accent);
-    color: #0b0f1a;
-    border: none;
-    border-radius: 8px;
-    padding: 0 18px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel); }
+  textarea { flex: 1; resize: none; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; max-height: 120px; }
+  button { background: var(--accent); color: #0b0f1a; border: none; border-radius: 8px; padding: 0 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Qwen2.5-1.5B-Instruct サンプル</h1>
-  <div class="model-id">onnx-community/Qwen2.5-0.5B-Instruct · Transformers.js</div>
+  <h1>Qwen2.5-0.5B-Instruct チャット (wllama / GGUF)</h1>
+  <div class="model-id" id="model-label">Qwen/Qwen2.5-0.5B-Instruct-GGUF (q4_k_m)</div>
 </header>
 
 <div id="status">初期化中...</div>
+<div id="progress-bar"><div id="progress-fill"></div></div>
 <div id="chat"></div>
 
 <form id="form">
@@ -105,16 +59,21 @@
 </form>
 
 <script type="module">
-  import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5";
+  import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@latest/esm/index.js";
+  import WasmFromCDN from "https://cdn.jsdelivr.net/npm/@wllama/wllama@latest/esm/wasm-from-cdn.js";
 
-  // onnx/フォルダ・chat_template・KVキャッシュ付きで正しく公開されている公式モデル
-  const MODEL_ID = "onnx-community/Qwen2.5-1.5B-Instruct";
+  // まずは動作確認用に、Qwen公式のGGUFを直接指定(Serowではなく素のQwen2.5-0.5B)
+  const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
 
   const statusEl = document.getElementById("status");
+  const progressFill = document.getElementById("progress-fill");
+  const modelLabel = document.getElementById("model-label");
   const chatEl = document.getElementById("chat");
   const formEl = document.getElementById("form");
   const inputEl = document.getElementById("input");
   const sendEl = document.getElementById("send");
+
+  modelLabel.textContent = MODEL_URL;
 
   const messages = [
     { role: "system", content: "You are a helpful assistant." }
@@ -133,54 +92,31 @@
     statusEl.textContent = text;
   }
 
-  let generator;
-
-  async function detectWebGPU() {
-    if (!("gpu" in navigator)) {
-      console.warn("navigator.gpu が存在しません(WebGPU非対応ブラウザ)");
-      return false;
-    }
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) {
-        console.warn("navigator.gpu はあるが requestAdapter() が null を返した(GPU非対応/ドライバ問題など)");
-        return false;
-      }
-      console.log("[WebGPU adapter]", adapter);
-      return true;
-    } catch (e) {
-      console.warn("requestAdapter() でエラー", e);
-      return false;
-    }
-  }
+  let wllama;
 
   async function init() {
-    const hasWebGPU = await detectWebGPU();
-    const device = hasWebGPU ? "webgpu" : "wasm";
-    setStatus(`モデルを読み込み中 (device: ${device})...`);
+    wllama = new Wllama(WasmFromCDN);
 
-    if (!hasWebGPU) {
-      addMessage("system", "⚠️ WebGPUが使えないため device: \"wasm\" で動作します。1.5B以上のモデルはWASMだとメモリ不足で落ちる(Aborted)ことがあります。Chrome/Edgeの最新版 かつ https://(またはlocalhost)で開いているか確認してください。");
-    }
-
+    setStatus("モデルをダウンロード中...");
     try {
-      generator = await pipeline("text-generation", MODEL_ID, {
-        dtype: device === "webgpu" ? "q4f16" : "q4",
-        device,
-        progress_callback: (data) => {
-          if (data.status === "progress") {
-            setStatus(`DL中: ${data.file} ${data.progress?.toFixed(0) ?? 0}%`);
-          }
+      await wllama.loadModelFromUrl(MODEL_URL, {
+        n_ctx: 4096,
+        n_gpu_layers: 9999, // 対応環境ならWebGPU/GPUオフロードを最大限使う
+        progressCallback: ({ loaded, total }) => {
+          const pct = total ? Math.round((loaded / total) * 100) : 0;
+          progressFill.style.width = pct + "%";
+          setStatus(`ダウンロード中... ${pct}% (${(loaded / 1e6).toFixed(0)}MB / ${(total / 1e6).toFixed(0)}MB)`);
         },
       });
     } catch (err) {
-      console.error(err);
-      addMessage("system", "エラー: " + err.message);
-      setStatus("読み込み失敗: " + err.message);
+      console.error("[load error]", err);
+      addMessage("system", "読み込みエラー: " + (err?.message ?? String(err)));
+      setStatus("読み込み失敗");
       return;
     }
 
-    setStatus(`準備完了 (device: ${device})`);
+    progressFill.style.width = "100%";
+    setStatus("準備完了(GGUF埋め込みのchat_templateをそのまま利用しています)");
     inputEl.disabled = false;
     sendEl.disabled = false;
     inputEl.focus();
@@ -193,38 +129,34 @@
     const botDiv = addMessage("bot", "");
     let acc = "";
 
-    const streamer = new TextStreamer(generator.tokenizer, {
-      skip_prompt: true,
-      skip_special_tokens: true,
-      callback_function: (chunk) => {
-        acc += chunk;
-        botDiv.textContent = acc;
-        chatEl.scrollTop = chatEl.scrollHeight;
-      },
-    });
-
     sendEl.disabled = true;
     inputEl.disabled = true;
     setStatus("生成中...");
 
     try {
-      // このモデルはtokenizer側にchat_templateが正しく設定されているので、
-      // messages配列をそのまま渡すだけでOK
-      const output = await generator(messages, {
-        max_new_tokens: 512,
-        do_sample: true,
+      // GGUFに埋め込まれたchat_templateがそのまま使われるので、
+      // Serow側で特別なテンプレート指定は不要
+      const stream = await wllama.createChatCompletion({
+        messages,
+        max_tokens: 512,
         temperature: 0.7,
         top_p: 0.9,
-        repetition_penalty: 1.3,   // 直前のトークンの繰り返しにペナルティ
-        no_repeat_ngram_size: 3,   // 同じ3-gramの再出現を禁止
-        streamer,
+        stream: true,
       });
-      const reply = output[0].generated_text.at(-1).content;
-      messages.push({ role: "assistant", content: reply });
-      botDiv.textContent = reply;
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta?.content ?? "";
+        if (delta) {
+          acc += delta;
+          botDiv.textContent = acc;
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
+      }
+
+      messages.push({ role: "assistant", content: acc });
     } catch (err) {
       console.error(err);
-      botDiv.textContent = "エラーが発生しました: " + err.message;
+      botDiv.textContent = "エラーが発生しました: " + (err?.message ?? String(err));
     } finally {
       sendEl.disabled = false;
       inputEl.disabled = false;

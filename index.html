@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serow Qwen2.5 0.5B (ONNX) デモ</title>
+    <!-- Import Map: Transformers.js を CDN から読み込む -->
+    <script type="importmap">
+        {
+            "imports": {
+                "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0/dist/transformers.min.js"
+            }
+        }
+    </script>
+    <style>
+        /* モダンでクリーンなデザイン */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f9fafb;
+            color: #1f2937;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .badge {
+            font-size: 0.8rem;
+            background: #e5e7eb;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 400;
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+        .status-bar {
+            background: #f3f4f6;
+            border-radius: 8px;
+            height: 8px;
+            width: 100%;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        .status-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: #3b82f6;
+            transition: width 0.2s ease;
+            border-radius: 8px;
+        }
+        #status-text {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            resize: vertical;
+            font-family: inherit;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            flex: 1 1 auto;
+        }
+        button:hover:not(:disabled) {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #e5e7eb;
+            color: #1f2937;
+        }
+        button.secondary:hover:not(:disabled) {
+            background: #d1d5db;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            min-height: 100px;
+            line-height: 1.6;
+        }
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.2s steps(4, jump-none) infinite;
+        }
+        @keyframes dots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>
+        🐉 Serow Qwen2.5 0.5B
+        <span class="badge">ONNX / Web</span>
+    </h1>
+    <p>ブラウザ上で動作する軽量チャットAIです。初回ロード時はモデル（約1GB）のダウンロードが発生します。</p>
+
+    <div class="card">
+        <!-- 進捗バー -->
+        <div class="status-bar">
+            <div id="progress-fill" class="status-bar-fill"></div>
+        </div>
+        <div id="status-text">⏳ モデルを読み込んでいます... (初回は時間がかかります)</div>
+
+        <!-- 入力エリア -->
+        <textarea id="user-input" rows="3" placeholder="メッセージを入力してください... (例: こんにちは、今日の天気は？)">こんにちは！私はAIアシスタントです。何かお手伝いできますか？</textarea>
+        
+        <div class="button-group">
+            <button id="generate-btn">🚀 生成する</button>
+            <button id="clear-btn" class="secondary">🗑️ クリア</button>
+        </div>
+
+        <!-- 出力エリア -->
+        <div id="output">ここに応答が表示されます。</div>
+    </div>
+
+    <div class="footer">
+        Model: <a href="https://huggingface.co/WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX" target="_blank">WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX</a>
+        | Powered by Transformers.js
+    </div>
+
+    <script type="module">
+        // --- JavaScript メインロジック ---
+        import { pipeline, env } from '@huggingface/transformers';
+
+        // 環境設定: ローカルキャッシュを有効化（デフォルトで有効）
+        // env.localModelPath = './models'; // 必要に応じてオフライン用に変更可
+
+        // DOM 要素の参照
+        const statusText = document.getElementById('status-text');
+        const progressFill = document.getElementById('progress-fill');
+        const outputDiv = document.getElementById('output');
+        const userInput = document.getElementById('user-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const clearBtn = document.getElementById('clear-btn');
+
+        // モデルID（あなたのHugging Faceリポジトリ）
+        const MODEL_ID = 'WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX';
+
+        // グローバルにパイプラインを保持（再読み込み防止）
+        let generator = null;
+
+        // --- 進捗表示の更新関数 ---
+        function updateProgress(progress) {
+            if (progress === undefined || progress === null) return;
+            // progress は 0〜1 の小数
+            const percent = Math.min(100, Math.round(progress * 100));
+            progressFill.style.width = `${percent}%`;
+            if (percent < 100) {
+                statusText.textContent = `⏳ モデルをダウンロード中... ${percent}%`;
+            } else {
+                statusText.textContent = '✅ モデルの読み込みが完了しました！';
+            }
+        }
+
+        // --- モデルの読み込み関数 (初回のみ実行) ---
+        async function loadModel() {
+            if (generator) return generator; // すでに読み込み済み
+
+            statusText.textContent = '⏳ モデルを初期化しています... (巨大なファイルのため数分かかる場合があります)';
+            progressFill.style.width = '0%';
+            generateBtn.disabled = true;
+
+            try {
+                // text-generation パイプラインを作成
+                // progress_callback で進捗をハンドリング
+                generator = await pipeline('text-generation', MODEL_ID, {
+                    // 進捗コールバック
+                    progress_callback: (data) => {
+                        if (data.status === 'progress') {
+                            // data.progress は 0〜1 の値
+                            updateProgress(data.progress);
+                        } else if (data.status === 'done') {
+                            progressFill.style.width = '100%';
+                            statusText.textContent = '✅ モデルの準備が整いました！';
+                            generateBtn.disabled = false;
+                        } else if (data.status === 'error') {
+                            statusText.textContent = `❌ エラー: ${data.error || '不明なエラー'}`;
+                            generateBtn.disabled = true;
+                        }
+                    },
+                    // Qwen2.5用の設定（必要に応じて）
+                    dtype: 'fp16', // モデルに合わせて
+                });
+
+                // 読み込み完了後のステータス更新（コールバックが確実に呼ばれない場合の保険）
+                progressFill.style.width = '100%';
+                statusText.textContent = '✅ モデルの準備が整いました！';
+                generateBtn.disabled = false;
+                return generator;
+
+            } catch (error) {
+                console.error('モデル読み込みエラー:', error);
+                statusText.textContent = `❌ 読み込みに失敗しました: ${error.message}`;
+                generateBtn.disabled = true;
+                throw error;
+            }
+        }
+
+        // --- テキスト生成の実行 ---
+        async function generateText() {
+            const inputText = userInput.value.trim();
+            if (!inputText) {
+                outputDiv.textContent = '⚠️ テキストを入力してください。';
+                return;
+            }
+
+            // ボタンを無効化（連打防止）
+            generateBtn.disabled = true;
+            outputDiv.textContent = '⏳ 考え中... (推論には少し時間がかかります)';
+
+            try {
+                // 1. モデルが読み込まれていることを確認（まだなら読み込む）
+                const gen = await loadModel();
+
+                // 2. Qwen2.5 はチャットテンプレートに対応しているため、
+                //    メッセージ形式で渡すと綺麗にフォーマットしてくれる
+                const messages = [
+                    { role: 'system', content: 'あなたは親切で役立つアシスタントです。' },
+                    { role: 'user', content: inputText }
+                ];
+
+                // 3. 推論実行
+                const startTime = performance.now();
+                const result = await gen(messages, {
+                    max_new_tokens: 256,      // 最大生成トークン数
+                    do_sample: true,
+                    temperature: 0.7,
+                    top_p: 0.9,
+                    // Qwen2.5で必要に応じてペナルティを調整
+                    repetition_penalty: 1.1,
+                });
+                const endTime = performance.now();
+                const timeSec = ((endTime - startTime) / 1000).toFixed(1);
+
+                // 4. 結果を表示
+                // result は [{ generated_text: "..." }] の配列
+                if (result && result.length > 0) {
+                    // プロンプト部分を除いた生成テキストのみを抽出
+                    // (チャットテンプレートを使うとアシスタントの返答だけが取り出せる場合があるが、ここでは全テキストを表示)
+                    let generated = result[0].generated_text;
+                    
+                    // 簡易的に、最後のアシスタントメッセージだけを抜き出す（より綺麗に表示）
+                    // ただし、Qwen2.5のテンプレートでは最後に"<|im_start|>assistant\n"が付くので、それを基準に分割
+                    const assistantTag = '<|im_start|>assistant\n';
+                    if (generated.includes(assistantTag)) {
+                        const parts = generated.split(assistantTag);
+                        // 最後の要素がアシスタントの返答（余計なタグを含む場合があるので、後処理）
+                        let assistantReply = parts[parts.length - 1];
+                        // 後続の特殊トークンがあれば除去（シンプルに）
+                        assistantReply = assistantReply.replace(/<\|im_end\|>/g, '').trim();
+                        outputDiv.textContent = assistantReply;
+                    } else {
+                        // フォールバック: そのまま表示
+                        outputDiv.textContent = generated;
+                    }
+                    
+                    // 生成時間を追記
+                    outputDiv.textContent += `\n\n--- (生成時間: ${timeSec}秒) ---`;
+                } else {
+                    outputDiv.textContent = '⚠️ 応答が取得できませんでした。';
+                }
+
+            } catch (error) {
+                console.error('推論エラー:', error);
+                outputDiv.textContent = `❌ エラーが発生しました: ${error.message}`;
+            } finally {
+                // ボタンを再度有効化
+                generateBtn.disabled = false;
+            }
+        }
+
+        // --- UI イベントのバインド ---
+        generateBtn.addEventListener('click', generateText);
+
+        clearBtn.addEventListener('click', () => {
+            userInput.value = '';
+            outputDiv.textContent = 'ここに応答が表示されます。';
+        });
+
+        // Enterキーで送信 (Shift+Enterで改行)
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                generateBtn.click();
+            }
+        });
+
+        // --- ページ読み込み時にモデルを事前読み込み（オプション） ---
+        // ユーザーがボタンを押すまで読み込みを遅らせたい場合はコメントアウト。
+        // ここではボタンが押されたときに初めて読み込むようにするため、loadModel()は呼ばない。
+        // ただし、ステータスには「待機中」と表示しておく。
+        statusText.textContent = '💡 「生成する」ボタンを押すとモデルを読み込みます。';
+        progressFill.style.width = '0%';
+        generateBtn.disabled = false; // ボタンは押せるようにしておく（押すと読み込み開始）
+
+        console.log('✅ アプリ準備完了！モデルID:', MODEL_ID);
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qwen2.5-0.5B-Instruct サンプル (Transformers.js)</title>
+<title>Qwen2.5-1.5B-Instruct サンプル (Transformers.js)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -108,7 +108,7 @@
   import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5";
 
   // onnx/フォルダ・chat_template・KVキャッシュ付きで正しく公開されている公式モデル
-  const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
+  const MODEL_ID = "onnx-community/Qwen2.5-1.5B-Instruct";
 
   const statusEl = document.getElementById("status");
   const chatEl = document.getElementById("chat");

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qwen2.5-1.5B-Instruct サンプル (Transformers.js)</title>
+<title>Qwen2.5-0.5B-Instruct サンプル (Transformers.js)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -135,10 +135,33 @@
 
   let generator;
 
+  async function detectWebGPU() {
+    if (!("gpu" in navigator)) {
+      console.warn("navigator.gpu が存在しません(WebGPU非対応ブラウザ)");
+      return false;
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        console.warn("navigator.gpu はあるが requestAdapter() が null を返した(GPU非対応/ドライバ問題など)");
+        return false;
+      }
+      console.log("[WebGPU adapter]", adapter);
+      return true;
+    } catch (e) {
+      console.warn("requestAdapter() でエラー", e);
+      return false;
+    }
+  }
+
   async function init() {
-    const hasWebGPU = "gpu" in navigator;
+    const hasWebGPU = await detectWebGPU();
     const device = hasWebGPU ? "webgpu" : "wasm";
     setStatus(`モデルを読み込み中 (device: ${device})...`);
+
+    if (!hasWebGPU) {
+      addMessage("system", "⚠️ WebGPUが使えないため device: \"wasm\" で動作します。1.5B以上のモデルはWASMだとメモリ不足で落ちる(Aborted)ことがあります。Chrome/Edgeの最新版 かつ https://(またはlocalhost)で開いているか確認してください。");
+    }
 
     try {
       generator = await pipeline("text-generation", MODEL_ID, {

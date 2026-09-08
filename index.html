@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Serow-Qwen2.5-0.5B Chat (Transformers.js)</title>
+<title>Qwen2.5-0.5B-Instruct サンプル (Transformers.js)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -28,33 +28,14 @@
   header {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
   }
-  header h1 { font-size: 15px; margin: 0; }
-  header .model-id { font-size: 12px; color: var(--muted); word-break: break-all; }
+  header h1 { font-size: 15px; margin: 0 0 4px; }
+  header .model-id { font-size: 12px; color: var(--muted); }
   #status {
     font-size: 12px;
     color: var(--muted);
     padding: 8px 16px;
     border-bottom: 1px solid var(--border);
-  }
-  #progress-wrap {
-    padding: 0 16px;
-  }
-  #progress-bar {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    margin: 6px 0 10px;
-  }
-  #progress-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width 0.15s ease;
   }
   #chat {
     flex: 1;
@@ -73,22 +54,9 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .msg.user {
-    align-self: flex-end;
-    background: var(--user-bubble);
-    border-bottom-right-radius: 2px;
-  }
-  .msg.bot {
-    align-self: flex-start;
-    background: var(--bot-bubble);
-    border-bottom-left-radius: 2px;
-  }
-  .msg.system {
-    align-self: center;
-    color: var(--muted);
-    font-size: 12px;
-    background: none;
-  }
+  .msg.user { align-self: flex-end; background: var(--user-bubble); border-bottom-right-radius: 2px; }
+  .msg.bot { align-self: flex-start; background: var(--bot-bubble); border-bottom-left-radius: 2px; }
+  .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
   form {
     display: flex;
     gap: 8px;
@@ -118,24 +86,17 @@
     font-weight: 600;
     cursor: pointer;
   }
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Serow-Qwen2.5-0.5B-Instruct チャット</h1>
-  <div class="model-id">WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX · Transformers.js</div>
+  <h1>Qwen2.5-0.5B-Instruct サンプル</h1>
+  <div class="model-id">onnx-community/Qwen2.5-0.5B-Instruct · Transformers.js</div>
 </header>
 
 <div id="status">初期化中...</div>
-<div id="progress-wrap">
-  <div id="progress-bar"><div id="progress-fill"></div></div>
-</div>
-
 <div id="chat"></div>
 
 <form id="form">
@@ -146,10 +107,10 @@
 <script type="module">
   import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5";
 
-  const MODEL_ID = "WebAIPocket/Serow-Qwen2.5-0.5B-Instruct-ONNX";
+  // onnx/フォルダ・chat_template・KVキャッシュ付きで正しく公開されている公式モデル
+  const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
 
   const statusEl = document.getElementById("status");
-  const progressFill = document.getElementById("progress-fill");
   const chatEl = document.getElementById("chat");
   const formEl = document.getElementById("form");
   const inputEl = document.getElementById("input");
@@ -172,75 +133,31 @@
     statusEl.textContent = text;
   }
 
-  // モデルごとにダウンロード進捗を集計して表示(全イベントをconsoleにも出す)
-  const fileProgress = new Map();
-  let lastEventAt = Date.now();
-  function onProgress(data) {
-    console.log("[progress]", data);
-    lastEventAt = Date.now();
-
-    if (data.status === "initiate") {
-      setStatus(`ファイル取得開始: ${data.file}`);
-    } else if (data.status === "download") {
-      setStatus(`ダウンロード開始: ${data.file}`);
-    } else if (data.status === "progress") {
-      const pct = typeof data.progress === "number" ? data.progress : 0;
-      fileProgress.set(data.file, pct);
-      const values = [...fileProgress.values()];
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      progressFill.style.width = avg.toFixed(1) + "%";
-      const sizeInfo = data.total
-        ? ` (${(data.loaded / 1e6).toFixed(1)}MB / ${(data.total / 1e6).toFixed(1)}MB)`
-        : "";
-      setStatus(`DL中: ${data.file}${sizeInfo}`);
-    } else if (data.status === "done") {
-      fileProgress.set(data.file, 100);
-      setStatus(`読み込み完了: ${data.file}`);
-    } else if (data.status === "ready") {
-      setStatus("モデル準備完了");
-    }
-  }
-
-  // 一定時間イベントが来なければ「stall」の可能性をコンソールに警告
-  setInterval(() => {
-    if (Date.now() - lastEventAt > 15000 && !generator) {
-      console.warn("15秒以上進捗イベントが来ていません。Networkタブでリクエストの状態(pending/404/CORS)を確認してください。");
-    }
-  }, 5000);
-
   let generator;
 
-  // Serowのリポジトリには tokenizer_config.json に chat_template が
-  // 設定されていないため、Qwen2.5標準のChatMLテンプレートを明示的に渡す。
-  const QWEN_CHAT_TEMPLATE =
-    "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}" +
-    "{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}";
-
   async function init() {
-    // WebGPUが使えるかチェックし、ダメならWASMにフォールバック
     const hasWebGPU = "gpu" in navigator;
     const device = hasWebGPU ? "webgpu" : "wasm";
     setStatus(`モデルを読み込み中 (device: ${device})...`);
 
     try {
       generator = await pipeline("text-generation", MODEL_ID, {
-        // このリポジトリはonnx/サブフォルダが無く、model.onnxが直下にあるため
-        // デフォルトの "onnx/" 探索をやめてルート直下を見るようにする
-        subfolder: "",
-        model_file_name: "model",
-        dtype: "fp32", // 量子化ファイルが無く model.onnx (fp32) のみのため
+        dtype: device === "webgpu" ? "q4f16" : "q4",
         device,
-        progress_callback: onProgress,
+        progress_callback: (data) => {
+          if (data.status === "progress") {
+            setStatus(`DL中: ${data.file} ${data.progress?.toFixed(0) ?? 0}%`);
+          }
+        },
       });
     } catch (err) {
-      console.error("[load error]", err);
-      addMessage("system", "エラー: " + (err?.message ?? String(err)));
-      setStatus("読み込み失敗。Consoleのエラー内容を確認してください: " + (err?.message ?? String(err)));
-      return; // 自動フォールバックはせず、まずエラーの中身を見る
+      console.error(err);
+      addMessage("system", "エラー: " + err.message);
+      setStatus("読み込み失敗: " + err.message);
+      return;
     }
 
-    progressFill.style.width = "100%";
-    setStatus(`準備完了 (device: ${generator.model?.device ?? device})`);
+    setStatus(`準備完了 (device: ${device})`);
     inputEl.disabled = false;
     sendEl.disabled = false;
     inputEl.focus();
@@ -268,20 +185,14 @@
     setStatus("生成中...");
 
     try {
-      // chat_templateがモデル側に無いため、こちらで明示的にプロンプト文字列を組み立てる
-      const prompt = generator.tokenizer.apply_chat_template(messages, {
-        chat_template: QWEN_CHAT_TEMPLATE,
-        tokenize: false,
-        add_generation_prompt: true,
-      });
-
-      const output = await generator(prompt, {
+      // このモデルはtokenizer側にchat_templateが正しく設定されているので、
+      // messages配列をそのまま渡すだけでOK
+      const output = await generator(messages, {
         max_new_tokens: 512,
         do_sample: false,
-        return_full_text: false, // プロンプト部分を除いた生成分だけ返す
         streamer,
       });
-      const reply = output[0].generated_text.trim();
+      const reply = output[0].generated_text.at(-1).content;
       messages.push({ role: "assistant", content: reply });
       botDiv.textContent = reply;
     } catch (err) {

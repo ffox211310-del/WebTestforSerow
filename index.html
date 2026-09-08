@@ -1,198 +1,79 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Serow GGUF チャット (wllama)</title>
-<style>
-  :root {
-    --bg: #0f1115;
-    --panel: #1a1d24;
-    --border: #2a2e37;
-    --text: #e6e8eb;
-    --muted: #9aa1ac;
-    --accent: #6ea8fe;
-    --user-bubble: #2a3550;
-    --bot-bubble: #22252c;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-  header { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-  header h1 { font-size: 15px; margin: 0 0 4px; }
-  header .model-id { font-size: 12px; color: var(--muted); word-break: break-all; }
-  #status { font-size: 12px; color: var(--muted); padding: 8px 16px; border-bottom: 1px solid var(--border); }
-  #progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 0 16px 10px; }
-  #progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.15s ease; }
-  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 85%; padding: 10px 12px; border-radius: 12px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-  .msg.user { align-self: flex-end; background: var(--user-bubble); border-bottom-right-radius: 2px; }
-  .msg.bot { align-self: flex-start; background: var(--bot-bubble); border-bottom-left-radius: 2px; }
-  .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
-  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel); }
-  textarea { flex: 1; resize: none; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; max-height: 120px; }
-  button { background: var(--accent); color: #0b0f1a; border: none; border-radius: 8px; padding: 0 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>wllama Qwen2.5 Test</title>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    #status {
+      padding: 10px;
+      background: #eee;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      white-space: pre-wrap;
+    }
+
+    #chat {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 300px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .user {
+      margin: 12px 0;
+      font-weight: bold;
+    }
+
+    .assistant {
+      margin: 12px 0 20px;
+    }
+
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 15px;
+      padding: 10px;
+      font-size: 16px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 18px;
+      font-size: 16px;
+    }
+  </style>
 </head>
+
 <body>
 
-<header>
-  <h1>Qwen2.5-0.5B-Instruct チャット (wllama / GGUF)</h1>
-  <div class="model-id" id="model-label">Qwen/Qwen2.5-0.5B-Instruct-GGUF (q4_k_m)</div>
-</header>
+  <h1>wllama + Qwen2.5</h1>
 
-<div id="status">初期化中...</div>
-<div id="progress-bar"><div id="progress-fill"></div></div>
-<div id="chat"></div>
+  <div id="status">wllamaを準備中...</div>
 
-<form id="form">
-  <textarea id="input" rows="1" placeholder="メッセージを入力..." disabled></textarea>
-  <button id="send" type="submit" disabled>送信</button>
-</form>
+  <div id="chat"></div>
 
-<script type="module">
-  import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
+  <textarea
+    id="input"
+    rows="3"
+    placeholder="メッセージを入力..."
+    disabled
+  ></textarea>
 
-  // wasm-from-cdn.js のヘルパーはバンドラー前提でブラウザ直読みだと解決に失敗するため、
-  // wasmファイルのURLを直接指定する
-  const CONFIG_PATHS = {
-    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm",
-  };
+  <button id="send" disabled>送信</button>
 
-  // まずは動作確認用に、Qwen公式のGGUFを直接指定(Serowではなく素のQwen2.5-0.5B)
-  const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
-
-  const statusEl = document.getElementById("status");
-  const progressFill = document.getElementById("progress-fill");
-  const modelLabel = document.getElementById("model-label");
-  const chatEl = document.getElementById("chat");
-  const formEl = document.getElementById("form");
-  const inputEl = document.getElementById("input");
-  const sendEl = document.getElementById("send");
-
-  modelLabel.textContent = MODEL_URL;
-
-  const messages = [
-    { role: "system", content: "You are a helpful assistant." }
-  ];
-
-  function addMessage(role, text) {
-    const div = document.createElement("div");
-    div.className = "msg " + role;
-    div.textContent = text;
-    chatEl.appendChild(div);
-    chatEl.scrollTop = chatEl.scrollHeight;
-    return div;
-  }
-
-  function setStatus(text) {
-    statusEl.textContent = text;
-  }
-
-  let wllama;
-
-  async function init() {
-    wllama = new Wllama(CONFIG_PATHS);
-
-    setStatus("モデルをダウンロード中...");
-    try {
-      await wllama.loadModelFromUrl(MODEL_URL, {
-        n_ctx: 4096,
-        n_gpu_layers: 9999, // 対応環境ならWebGPU/GPUオフロードを最大限使う
-        progressCallback: ({ loaded, total }) => {
-          const pct = total ? Math.round((loaded / total) * 100) : 0;
-          progressFill.style.width = pct + "%";
-          setStatus(`ダウンロード中... ${pct}% (${(loaded / 1e6).toFixed(0)}MB / ${(total / 1e6).toFixed(0)}MB)`);
-        },
-      });
-    } catch (err) {
-      console.error("[load error]", err);
-      addMessage("system", "読み込みエラー: " + (err?.message ?? String(err)));
-      setStatus("読み込み失敗");
-      return;
-    }
-
-    progressFill.style.width = "100%";
-    setStatus("準備完了(GGUF埋め込みのchat_templateをそのまま利用しています)");
-    inputEl.disabled = false;
-    sendEl.disabled = false;
-    inputEl.focus();
-  }
-
-  async function send(text) {
-    messages.push({ role: "user", content: text });
-    addMessage("user", text);
-
-    const botDiv = addMessage("bot", "");
-    let acc = "";
-
-    sendEl.disabled = true;
-    inputEl.disabled = true;
-    setStatus("生成中...");
-
-    try {
-      // GGUFに埋め込まれたchat_templateがそのまま使われるので、
-      // Serow側で特別なテンプレート指定は不要
-      const stream = await wllama.createChatCompletion({
-        messages,
-        max_tokens: 512,
-        temperature: 0.7,
-        top_p: 0.9,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const delta = chunk.choices?.[0]?.delta?.content ?? "";
-        if (delta) {
-          acc += delta;
-          botDiv.textContent = acc;
-          chatEl.scrollTop = chatEl.scrollHeight;
-        }
-      }
-
-      messages.push({ role: "assistant", content: acc });
-    } catch (err) {
-      console.error(err);
-      botDiv.textContent = "エラーが発生しました: " + (err?.message ?? String(err));
-    } finally {
-      sendEl.disabled = false;
-      inputEl.disabled = false;
-      inputEl.focus();
-      setStatus("準備完了");
-    }
-  }
-
-  formEl.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const text = inputEl.value.trim();
-    if (!text) return;
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-    send(text);
-  });
-
-  inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      formEl.requestSubmit();
-    }
-  });
-
-  inputEl.addEventListener("input", () => {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
-  });
-
-  init();
-</script>
+  <script type="module" src="./app.js"></script>
 
 </body>
 </html>

@@ -13,7 +13,6 @@
         }
     </script>
     <style>
-        /* モダンでクリーンなデザイン */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             max-width: 800px;
@@ -62,6 +61,7 @@
             font-size: 0.9rem;
             color: #6b7280;
             margin-top: 4px;
+            min-height: 1.5em;
         }
         textarea {
             width: 100%;
@@ -121,21 +121,18 @@
             min-height: 100px;
             line-height: 1.6;
         }
-        .loading-dots::after {
-            content: '';
-            animation: dots 1.2s steps(4, jump-none) infinite;
-        }
-        @keyframes dots {
-            0% { content: ''; }
-            25% { content: '.'; }
-            50% { content: '..'; }
-            75% { content: '...'; }
-        }
         .footer {
             margin-top: 30px;
             font-size: 0.8rem;
             color: #9ca3af;
             text-align: center;
+        }
+        .error-text {
+            color: #dc2626;
+            background: #fee2e2;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
         }
     </style>
 </head>
@@ -152,10 +149,10 @@
         <div class="status-bar">
             <div id="progress-fill" class="status-bar-fill"></div>
         </div>
-        <div id="status-text">⏳ モデルを読み込んでいます... (初回は時間がかかります)</div>
+        <div id="status-text">💡 「生成する」ボタンを押すとモデルを読み込みます。</div>
 
         <!-- 入力エリア -->
-        <textarea id="user-input" rows="3" placeholder="メッセージを入力してください... (例: こんにちは、今日の天気は？)">こんにちは！私はAIアシスタントです。何かお手伝いできますか？</textarea>
+        <textarea id="user-input" rows="3" placeholder="メッセージを入力してください... (例: こんにちは！)">こんにちは！今日はどんな一日でしたか？</textarea>
         
         <div class="button-group">
             <button id="generate-btn">🚀 生成する</button>
@@ -173,10 +170,7 @@
 
     <script type="module">
         // --- JavaScript メインロジック ---
-        import { pipeline, env } from '@huggingface/transformers';
-
-        // 環境設定: ローカルキャッシュを有効化（デフォルトで有効）
-        // env.localModelPath = './models'; // 必要に応じてオフライン用に変更可
+        import { pipeline } from '@huggingface/transformers';
 
         // DOM 要素の参照
         const statusText = document.getElementById('status-text');
@@ -191,11 +185,11 @@
 
         // グローバルにパイプラインを保持（再読み込み防止）
         let generator = null;
+        let isLoading = false;
 
         // --- 進捗表示の更新関数 ---
         function updateProgress(progress) {
             if (progress === undefined || progress === null) return;
-            // progress は 0〜1 の小数
             const percent = Math.min(100, Math.round(progress * 100));
             progressFill.style.width = `${percent}%`;
             if (percent < 100) {
@@ -207,20 +201,27 @@
 
         // --- モデルの読み込み関数 (初回のみ実行) ---
         async function loadModel() {
-            if (generator) return generator; // すでに読み込み済み
+            if (generator) return generator;
+            if (isLoading) {
+                statusText.textContent = '⏳ すでに読み込み中です... お待ちください。';
+                return null;
+            }
 
-            statusText.textContent = '⏳ モデルを初期化しています... (巨大なファイルのため数分かかる場合があります)';
-            progressFill.style.width = '0%';
+            isLoading = true;
             generateBtn.disabled = true;
+            statusText.textContent = '⏳ モデルを初期化しています... (初回は数分かかります)';
+            progressFill.style.width = '0%';
 
             try {
-                // text-generation パイプラインを作成
-                // progress_callback で進捗をハンドリング
+                // ★★★ 修正ポイント ★★★
+                // model_file_name を pipeline のルートオプションとして正しく指定
                 generator = await pipeline('text-generation', MODEL_ID, {
+                    // ここが正しい配置場所です（progress_callback の外側）
+                    model_file_name: 'model.onnx',
+
                     // 進捗コールバック
                     progress_callback: (data) => {
                         if (data.status === 'progress') {
-                            // data.progress は 0〜1 の値
                             updateProgress(data.progress);
                         } else if (data.status === 'done') {
                             progressFill.style.width = '100%';
@@ -231,20 +232,22 @@
                             generateBtn.disabled = true;
                         }
                     },
-                    // Qwen2.5用の設定（必要に応じて）
-                    dtype: 'fp16', // モデルに合わせて
+                    // モデルのデータ型指定（あなたのONNXはfp16でエクスポート済み）
+                    dtype: 'fp16',
                 });
 
-                // 読み込み完了後のステータス更新（コールバックが確実に呼ばれない場合の保険）
+                // 読み込み完了後の最終処理
                 progressFill.style.width = '100%';
                 statusText.textContent = '✅ モデルの準備が整いました！';
                 generateBtn.disabled = false;
+                isLoading = false;
                 return generator;
 
             } catch (error) {
                 console.error('モデル読み込みエラー:', error);
-                statusText.textContent = `❌ 読み込みに失敗しました: ${error.message}`;
+                statusText.innerHTML = `<span class="error-text">❌ 読み込みに失敗しました: ${error.message}</span>`;
                 generateBtn.disabled = true;
+                isLoading = false;
                 throw error;
             }
         }
@@ -262,11 +265,16 @@
             outputDiv.textContent = '⏳ 考え中... (推論には少し時間がかかります)';
 
             try {
-                // 1. モデルが読み込まれていることを確認（まだなら読み込む）
+                // 1. モデルが読み込まれていることを確認
                 const gen = await loadModel();
+                if (!gen) {
+                    outputDiv.textContent = '❌ モデルの読み込みに失敗しました。再読み込みしてください。';
+                    generateBtn.disabled = false;
+                    return;
+                }
 
-                // 2. Qwen2.5 はチャットテンプレートに対応しているため、
-                //    メッセージ形式で渡すと綺麗にフォーマットしてくれる
+                // 2. Qwen2.5 用のチャットメッセージ形式
+                //    Transformers.js は内部で apply_chat_template を呼び出してくれます
                 const messages = [
                     { role: 'system', content: 'あなたは親切で役立つアシスタントです。' },
                     { role: 'user', content: inputText }
@@ -275,47 +283,44 @@
                 // 3. 推論実行
                 const startTime = performance.now();
                 const result = await gen(messages, {
-                    max_new_tokens: 256,      // 最大生成トークン数
+                    max_new_tokens: 256,
                     do_sample: true,
                     temperature: 0.7,
                     top_p: 0.9,
-                    // Qwen2.5で必要に応じてペナルティを調整
                     repetition_penalty: 1.1,
                 });
                 const endTime = performance.now();
                 const timeSec = ((endTime - startTime) / 1000).toFixed(1);
 
-                // 4. 結果を表示
-                // result は [{ generated_text: "..." }] の配列
+                // 4. 結果を整形して表示
                 if (result && result.length > 0) {
-                    // プロンプト部分を除いた生成テキストのみを抽出
-                    // (チャットテンプレートを使うとアシスタントの返答だけが取り出せる場合があるが、ここでは全テキストを表示)
-                    let generated = result[0].generated_text;
+                    let fullText = result[0].generated_text;
                     
-                    // 簡易的に、最後のアシスタントメッセージだけを抜き出す（より綺麗に表示）
-                    // ただし、Qwen2.5のテンプレートでは最後に"<|im_start|>assistant\n"が付くので、それを基準に分割
-                    const assistantTag = '<|im_start|>assistant\n';
-                    if (generated.includes(assistantTag)) {
-                        const parts = generated.split(assistantTag);
-                        // 最後の要素がアシスタントの返答（余計なタグを含む場合があるので、後処理）
-                        let assistantReply = parts[parts.length - 1];
-                        // 後続の特殊トークンがあれば除去（シンプルに）
-                        assistantReply = assistantReply.replace(/<\|im_end\|>/g, '').trim();
-                        outputDiv.textContent = assistantReply;
-                    } else {
-                        // フォールバック: そのまま表示
-                        outputDiv.textContent = generated;
+                    // アシスタントの返答だけを抽出する試み（Qwen2.5 の特殊トークンに対応）
+                    // 注: Transformers.js のバージョンによって挙動が異なる場合があります
+                    const assistantTag = '<|im_start|>assistant';
+                    let reply = fullText;
+                    if (fullText.includes(assistantTag)) {
+                        // 最後のアシスタントセクションを抽出
+                        const parts = fullText.split(assistantTag);
+                        reply = parts[parts.length - 1].replace(/<\|im_end\|>/g, '').trim();
+                        // システムプロンプトが残っている場合の簡易対処
+                        if (reply.includes('<|im_start|>')) {
+                            reply = fullText; // フォールバック: 全体表示
+                        }
                     }
                     
-                    // 生成時間を追記
-                    outputDiv.textContent += `\n\n--- (生成時間: ${timeSec}秒) ---`;
+                    outputDiv.textContent = reply || '(応答が空でした)';
+                    
+                    // 生成時間を追記（デバッグ用）
+                    outputDiv.textContent += `\n\n--- ⏱️ ${timeSec}秒 ---`;
                 } else {
                     outputDiv.textContent = '⚠️ 応答が取得できませんでした。';
                 }
 
             } catch (error) {
                 console.error('推論エラー:', error);
-                outputDiv.textContent = `❌ エラーが発生しました: ${error.message}`;
+                outputDiv.innerHTML = `<span class="error-text">❌ エラーが発生しました: ${error.message}</span>`;
             } finally {
                 // ボタンを再度有効化
                 generateBtn.disabled = false;
@@ -338,15 +343,10 @@
             }
         });
 
-        // --- ページ読み込み時にモデルを事前読み込み（オプション） ---
-        // ユーザーがボタンを押すまで読み込みを遅らせたい場合はコメントアウト。
-        // ここではボタンが押されたときに初めて読み込むようにするため、loadModel()は呼ばない。
-        // ただし、ステータスには「待機中」と表示しておく。
-        statusText.textContent = '💡 「生成する」ボタンを押すとモデルを読み込みます。';
-        progressFill.style.width = '0%';
-        generateBtn.disabled = false; // ボタンは押せるようにしておく（押すと読み込み開始）
-
+        // 初期状態ではボタンを有効にしておく（押すと読み込み開始）
+        generateBtn.disabled = false;
         console.log('✅ アプリ準備完了！モデルID:', MODEL_ID);
+        console.log('ℹ️ 注意: このモデルは ONNX フォーマットでエクスポートされています。');
     </script>
 </body>
 </html>
